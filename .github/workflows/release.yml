@@ -54,7 +54,7 @@ jobs:
         run: |
           docker run -d --name iconifyd-test -p 127.0.0.1:8080:8080 iconifyd:test
           trap 'docker logs iconifyd-test; docker rm -f iconifyd-test' EXIT
-          node scripts/smoke-test.mjs
+          node scripts/smoke-test.ts
       - name: Package release assets
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |

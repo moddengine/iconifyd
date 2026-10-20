@@ -55,7 +55,7 @@ Dockerfile have not been changed by this extraction.
 
 ## Build locally
 
-Requires Go with CGO and a C compiler, Node.js 24, npm, and zstd:
+Requires Go 1.25 or newer with CGO and a C compiler, Node.js 24, npm, and zstd:
 
 ```sh
 npm ci --ignore-scripts
