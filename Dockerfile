@@ -6,7 +6,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 ARG REVISION=development
 RUN node --input-type=module -e 'import fs from "node:fs"; const pkg = JSON.parse(fs.readFileSync("node_modules/@iconify/json/package.json")); fs.writeFileSync("manifest.json", JSON.stringify({iconifyVersion:pkg.version,schemaVersion:1,builderRevision:process.env.REVISION},null,2)+"\n")'
 
-FROM golang:1.26.4-trixie AS build
+FROM golang:1.27.2-trixie AS build
 WORKDIR /source
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
