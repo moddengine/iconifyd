@@ -36,7 +36,10 @@ GET /version
 Search also accepts `prefixes` and `category`. `/version` identifies the API
 protocol, not the asset release; `manifest.json` identifies the source icon
 version, builder revision, and schema version. The source corpus is locked in
-`package-lock.json`. SQLite uses 32 KiB pages and an 8 KiB zstd dictionary.
+`package-lock.json`. SQLite uses 32 KiB pages and an 8 KiB zstd dictionary. Icons or aliases with
+non-positive dimensions, and aliases whose canonical icon was rejected, are
+excluded with a warning during the build. Other malformed collection data
+still fails the build.
 
 To embed the database in ModdEngine without rebuilding it:
 

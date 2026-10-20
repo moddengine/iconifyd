@@ -193,3 +193,29 @@ func TestFailedBuildPreservesExistingOutput(t *testing.T) {
 		t.Fatalf("output changed to %q", got)
 	}
 }
+
+func TestExtractRejectsInvalidIconsWithoutDroppingValidCollection(t *testing.T) {
+	input, xml := t.TempDir(), t.TempDir()
+	data := []byte(`{
+  "prefix":"test", "width":24, "height":24,
+  "icons":{
+   "valid":{"body":"<path/>"},
+   "broken":{"body":"<path/>","width":0,"height":0}
+  },
+  "aliases":{
+   "valid-alias":{"parent":"valid"},
+   "broken-alias":{"parent":"valid","width":0},
+   "broken-parent":{"parent":"broken","width":24,"height":24}
+  }
+ }`)
+	if err := os.WriteFile(filepath.Join(input, "test.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	collections, icons, aliases, err := extract(input, xml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(collections) != 1 || len(icons) != 1 || icons[0].Name != "valid" || len(aliases) != 1 || aliases[0].Name != "valid-alias" {
+		t.Fatalf("invalid entries were retained or valid ones lost: %v %v %v", collections, icons, aliases)
+	}
+}

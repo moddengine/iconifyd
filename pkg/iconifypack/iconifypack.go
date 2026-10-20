@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -199,11 +200,14 @@ func extract(inputDir, xmlDir string) ([]collectionRecord, []iconRecord, []alias
 			iconNames = append(iconNames, name)
 		}
 		sort.Strings(iconNames)
+		validIcons := make(map[string]bool, len(iconNames))
 		for _, name := range iconNames {
 			item := resolved[name]
 			if item.Width <= 0 || item.Height <= 0 {
-				return nil, nil, nil, fmt.Errorf("%s/%s has invalid dimensions %gx%g", collection.Prefix, name, item.Width, item.Height)
+				log.Printf("Skipping %s/%s: invalid dimensions %gx%g", collection.Prefix, name, item.Width, item.Height)
+				continue
 			}
+			validIcons[name] = true
 			bodyPath := filepath.Join(xmlDir, fmt.Sprintf("%09d.xml", len(icons)))
 			if err := os.WriteFile(bodyPath, []byte(item.Body), 0o644); err != nil {
 				return nil, nil, nil, fmt.Errorf("write %s/%s XML: %w", collection.Prefix, name, err)
@@ -229,7 +233,12 @@ func extract(inputDir, xmlDir string) ([]collectionRecord, []iconRecord, []alias
 		for _, name := range aliasNames {
 			item := resolved[name]
 			if item.Width <= 0 || item.Height <= 0 {
-				return nil, nil, nil, fmt.Errorf("%s/%s has invalid dimensions %gx%g", collection.Prefix, name, item.Width, item.Height)
+				log.Printf("Skipping %s/%s: invalid dimensions %gx%g", collection.Prefix, name, item.Width, item.Height)
+				continue
+			}
+			if !validIcons[item.Canonical] {
+				log.Printf("Skipping %s/%s: canonical icon %s was rejected", collection.Prefix, name, item.Canonical)
+				continue
 			}
 			aliases = append(aliases, aliasRecord{
 				Collection: collection.Prefix,
