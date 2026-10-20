@@ -1,0 +1,138 @@
+name: Test and release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
+      - run: test -z "$(gofmt -l cmd pkg)"
+      - run: go test -mod=readonly -race ./...
+      - run: go vet -mod=readonly ./...
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Generate database and provenance metadata
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: assets
+          build-args: REVISION=${{ github.sha }}
+          outputs: type=local,dest=dist
+          cache-from: type=gha,scope=database
+          cache-to: type=gha,mode=max,scope=database
+      - name: Build server for smoke test
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: server
+          load: true
+          tags: iconifyd:test
+          cache-from: type=gha,scope=database
+      - name: Smoke-test real corpus
+        run: |
+          docker run -d --name iconifyd-test -p 127.0.0.1:8080:8080 iconifyd:test
+          trap 'docker logs iconifyd-test; docker rm -f iconifyd-test' EXIT
+          node scripts/smoke-test.mjs
+      - name: Package release assets
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          tar -czf client.tar.gz -C dist/client .
+          mv client.tar.gz dist/
+      - uses: actions/upload-artifact@v7.0.2
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          name: release-assets
+          path: |
+            dist/*.sqlite
+            dist/*.json
+            dist/*.md
+            dist/*.tar.gz
+          compression-level: 0
+          retention-days: 3
+
+  release:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: 0.1.${{ github.run_number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: release-assets
+          path: dist
+      - uses: docker/setup-qemu-action@v4.4.0
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish server
+        id: server
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - name: Publish data-only image
+        id: data
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: data
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}-data:${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Publish GitHub release
+        env:
+          SERVER_DIGEST: ${{ steps.server.outputs.digest }}
+          DATA_DIGEST: ${{ steps.data.outputs.digest }}
+        run: |
+          cd dist
+          sha256sum icons.sqlite manifest.json collections.json ICONIFY-README.md client.tar.gz > SHA256SUMS
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "iconifyd $VERSION" --generate-notes
+          fi
+          gh release upload "v$VERSION" icons.sqlite manifest.json collections.json ICONIFY-README.md client.tar.gz SHA256SUMS --clobber
+          {
+            echo "Server: ghcr.io/${GITHUB_REPOSITORY}:${VERSION}@${SERVER_DIGEST}"
+            echo "Data: ghcr.io/${GITHUB_REPOSITORY}-data:${VERSION}@${DATA_DIGEST}"
+          } >> "$GITHUB_STEP_SUMMARY"

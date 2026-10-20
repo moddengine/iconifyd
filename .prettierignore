@@ -1,0 +1,4 @@
+node_modules
+dist
+go.sum
+package-lock.json
