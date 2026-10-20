@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24.13.0-trixie-slim AS corpus
+FROM node:26.12.0-trixie-slim AS corpus
 WORKDIR /source
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
