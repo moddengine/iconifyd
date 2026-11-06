@@ -1,0 +1,46 @@
+name: Update icon database
+
+on:
+  schedule:
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: update-icons
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Update upstream database and start release checks
+        run: |
+          current=$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).devDependencies["@iconify/json"]')
+          latest=$(npm view @iconify/json version)
+          if [ "$current" = "$latest" ]; then
+            echo "Iconify database is already current ($current)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          npm install --save-dev --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund "@iconify/json@$latest"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m "Update Iconify database to $latest"
+          git push origin HEAD:main
+          # GITHUB_TOKEN pushes do not trigger the release workflow automatically.
+          gh workflow run release.yml --ref main
+          echo "Updated Iconify database from $current to $latest; release checks started." >> "$GITHUB_STEP_SUMMARY"

@@ -111,9 +111,16 @@ numbers may have gaps. Change the `0.1` prefix in the workflow when changing the
 public compatibility contract. Breaking schema changes must update
 `schemaVersion` and coordinate with database consumers.
 
-Dependabot checks the pinned `@iconify/json` dependency daily; merging its PR
-builds and releases updated assets. Go modules, GitHub Actions and base images
-are checked weekly. There is no custom upstream polling or automatic merge.
+The `Update icon database` workflow checks `@iconify/json` on the first of each
+month at 03:17 UTC, or when run manually on `main`. If the upstream version has
+changed, it commits the updated package pin and lockfile to `main` and explicitly
+starts `Test and release`. The usual checks must pass before new images and a
+GitHub release are published. An unchanged upstream version produces no commit
+or release. If release checks fail, fix the failure and rerun `Test and release`.
+Repository rules must allow `github-actions[bot]` to push these updates to `main`.
+
+Dependabot checks other npm dependencies daily; Go modules, GitHub Actions and
+base images are checked weekly.
 The workflow uses `GITHUB_TOKEN` for GHCR and releases; no personal token or
 Docker Hub credentials are required. Organization policy must allow Actions
 and package publishing. GHCR package visibility is managed separately from
